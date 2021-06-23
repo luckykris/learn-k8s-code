@@ -1,0 +1,122 @@
+@startuml
+start
+:func Run(...)
+cmd/kubelet/app/server.go;
+note right
+    初始化日志等
+end note
+:func run(...)
+cmd/kubelet/app/server.go;
+    note right
+        1.环境检查配置初始化
+        2.生成KubeClient、EventClient等
+        3.获取当前container、cgroup等状态
+    end note
+:func RunKubelet(...)
+cmd/kubelet/app/server.go;
+    note right
+        1.初始化kubelect
+        2.生成NewKubeGenericRuntimeManager
+    end note
+:func startKubelet(...);
+    note right
+        启动kubelect
+    end note
+:go k.Run(podCfg.Updates())<
+    note right
+        1.启动kubelet线程
+    end note
+:func (kl *Kubelet) Run
+pkg/kubelet/kubelet.go;
+split
+    :go kl.volumeManager.Run<
+    stop
+split again
+    :go wait.Until(kl.syncNodeStatus)<
+    :func (kl *Kubelet) syncNodeStatus();
+        note right
+            1.访问api-server注册节点
+            2.更新节点状态
+        end note
+    :func (kl *Kubelet) updateNodeStatus();
+        note right
+            重试逻辑
+        end note
+    :func (kl *Kubelet) tryUpdateNodeStatus(...);
+        note right
+            1.heartbeatClient获取远程node状态
+            2.更新node状态kl.setNodeStatus(node)
+            3.访问api-server更新远端node状态
+        end note
+    stop
+split again
+    :go wait.Until(kl.updateRuntimeUp<
+    :func (kl *Kubelet) updateRuntimeUp();
+    note right
+        1.判断设置节点的状态Ready,以及一些condition信息
+        2.启动containerManager
+    end note
+    :func (kl *Kubelet) initializeRuntimeDependentModules();
+    :func (cm *containerManagerImpl) Start()
+    pkg/kubelet/dockershim/cm/container_manager_linux.go;
+    note right
+         1.判断设置节点的状态Ready,以及一些condition信息
+         2.启动containerManager
+    end note
+    stop
+split again
+    :go wait.Until(kl.podKiller.PerformPodKillingWork<
+    :func (pk *podKillerWithChannel) PerformPodKillingWork()
+    pkg/kubelet/kubelet_pods.go;
+    note right
+        从podKillingCh队列离取需要删除的pod执行删除
+    end note
+    stop
+split again
+    :kl.statusManager.Start()<
+    :func (m *manager) Start()
+    pkg/kubelet/status/status_manager.go;
+    note right
+        从m.podStatusChannel获取pod状态与apiserver互相同步
+    end note
+    stop
+split again
+    :kl.runtimeClassManager.Start(wait.NeverStop)<
+    stop
+split again
+    :kl.pleg.Start()<
+       note right
+           pod生命周期event生成线程
+       end note
+    :func (g *GenericPLEG) relist()
+    pkg/kubelet/pleg/generic.go;
+       note right
+           1.查询运行的container并对比
+           2.将变化时间传入g.eventChannel
+       end note
+    stop
+split again
+    :kl.syncLoop(updates, kl)<
+    :func (kl *Kubelet) syncLoopIteration(...);
+       note right
+           1.从configCh跟plegCh两个队列里取事件做对应增删本地状态
+       end note
+    :func (kl *Kubelet) dispatchWork(..)
+    pkg/kubelet/pod_workers.go;
+       note right
+           1.执行一个异步执行的podworker
+       end note
+    :func (p *podWorkers) UpdatePod(...);
+    :func (kl *Kubelet) syncPod(...)
+    pkg/kubelet/kubelet.go;
+        note right
+            1.检查pod各种volumne挂载等同步的信息
+        end note
+    :kl.containerRuntime.SyncPod<
+    :func (m *kubeGenericRuntimeManager) SyncPod
+    pkg/kubelet/kuberuntime/kuberuntime_manager.go;
+    stop
+end split
+
+
+@enduml
